@@ -1,138 +1,178 @@
-const router = require('express').Router()
-const db = require("../models")
+const router = require("express").Router();
+const db = require("../models");
 
-const { Place, Comment, User } = db
+const { Place, Comment, User } = db;
 
-router.post('/', async (req, res) => {
-    if (!req.body.pic) {
-        req.body.pic = 'http://placekitten.com/400/400'
-    }
-    if (!req.body.city) {
-        req.body.city = 'Anytown'
-    }
-    if (!req.body.state) {
-        req.body.state = 'USA'
-    }
-    const place = await Place.create(req.body)
-    res.json(place)
-})
+router.post("/", async (req, res) => {
+  if (req.currentUser?.role !== "admin") {
+    return res
+      .status(403)
+      .json({ message: "You are not allowed to add a place" });
+  }
 
+  try {
+    const place = await Place.create(req.body);
+    res.json(place);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to add a place" });
+  }
+});
 
-router.get('/', async (req, res) => {
-    const places = await Place.findAll()
-    res.json(places)
-})
+router.get("/", async (req, res) => {
+  try {
+    const places = await Place.findAll();
+    res.json(places);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to get places" });
+  }
+});
 
+router.get("/:placeId", async (req, res) => {
+  const placeId = Number(req.params.placeId);
 
-router.get('/:placeId', async (req, res) => {
-    let placeId = Number(req.params.placeId)
-    if (isNaN(placeId)) {
-        res.status(404).json({ message: `Invalid id "${placeId}"` })
-    } else {
-        const place = await Place.findOne({
-            where: { placeId: placeId },
-            include: {
-                association: 'comments',
-                include: 'author'
-            }
-        })
-        if (!place) {
-            res.status(404).json({ message: `Could not find place with id "${placeId}"` })
-        } else {
-            res.json(place)
-        }
-    }
-})
+  if (isNaN(placeId)) {
+    res.status(400).json({ message: "Invalid place ID" });
+    return;
+  }
 
-router.put('/:placeId', async (req, res) => {
-    let placeId = Number(req.params.placeId)
-    if (isNaN(placeId)) {
-        res.status(404).json({ message: `Invalid id "${placeId}"` })
-    } else {
-        const place = await Place.findOne({
-            where: { placeId: placeId },
-        })
-        if (!place) {
-            res.status(404).json({ message: `Could not find place with id "${placeId}"` })
-        } else {
-            Object.assign(place, req.body)
-            await place.save()
-            res.json(place)
-        }
-    }
-})
-
-router.delete('/:placeId', async (req, res) => {
-    let placeId = Number(req.params.placeId)
-    if (isNaN(placeId)) {
-        res.status(404).json({ message: `Invalid id "${placeId}"` })
-    } else {
-        const place = await Place.findOne({
-            where: {
-                placeId: placeId
-            }
-        })
-        if (!place) {
-            res.status(404).json({ message: `Could not find place with id "${placeId}"` })
-        } else {
-            await place.destroy()
-            res.json(place)
-        }
-    }
-})
-
-router.post('/:placeId/comments', async (req, res) => {
-    const placeId = Number(req.params.placeId)
-
-    req.body.rant = req.body.rant ? true : false
-
+  try {
     const place = await Place.findOne({
-        where: { placeId: placeId }
-    })
+      where: { placeId },
+      include: {
+        model: Comment,
+        include: User,
+      },
+    });
 
     if (!place) {
-        res.status(404).json({ message: `Could not find place with id "${placeId}"` })
+      res.status(404).json({ message: "Place not found" });
+    } else {
+      res.json(place);
+    }
+  } catch (error) {
+    res.status(500).json({ message: "Failed to get the place" });
+  }
+});
+
+router.put("/:placeId", async (req, res) => {
+  const placeId = Number(req.params.placeId);
+
+  if (isNaN(placeId)) {
+    res.status(400).json({ message: "Invalid place ID" });
+    return;
+  }
+
+  if (req.currentUser?.role !== "admin") {
+    res.status(403).json({ message: "You are not allowed to edit places" });
+    return;
+  }
+
+  try {
+    const place = await Place.findByPk(placeId);
+
+    if (!place) {
+      res.status(404).json({ message: "Place not found" });
+    } else {
+      await place.update(req.body);
+      res.json(place);
+    }
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update the place" });
+  }
+});
+
+router.delete("/:placeId", async (req, res) => {
+  const placeId = Number(req.params.placeId);
+
+  if (isNaN(placeId)) {
+    res.status(400).json({ message: "Invalid place ID" });
+    return;
+  }
+
+  if (req.currentUser?.role !== "admin") {
+    res.status(403).json({ message: "You are not allowed to delete places" });
+    return;
+  }
+
+  try {
+    const place = await Place.findByPk(placeId);
+
+    if (!place) {
+      res.status(404).json({ message: "Place not found" });
+    } else {
+      await place.destroy();
+      res.json(place);
+    }
+  } catch (error) {
+    res.status(500).json({ message: "Failed to delete the place" });
+  }
+});
+
+router.post("/:placeId/comments", async (req, res) => {
+  const placeId = Number(req.params.placeId);
+
+  if (isNaN(placeId)) {
+    res.status(400).json({ message: "Invalid place ID" });
+    return;
+  }
+
+  try {
+    const place = await Place.findByPk(placeId);
+
+    if (!place) {
+      res.status(404).json({ message: "Place not found" });
+      return;
     }
 
-    const author = await User.findOne({
-        where: { userId: req.body.authorId }
-    })
+    const authorId = req.currentUser?.id;
 
-    if (!author) {
-        res.status(404).json({ message: `Could not find author with id "${req.body.authorId}"` })
+    if (!authorId) {
+      res
+        .status(403)
+        .json({ message: "You must be logged in to add a comment" });
+      return;
     }
 
     const comment = await Comment.create({
-        ...req.body,
-        placeId: placeId
-    })
+      ...req.body,
+      placeId,
+      authorId,
+    });
 
-    res.send({
-        ...comment.toJSON(),
-        author
-    })
-})
+    res.json(comment);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to add the comment" });
+  }
+});
 
-router.delete('/:placeId/comments/:commentId', async (req, res) => {
-    let placeId = Number(req.params.placeId)
-    let commentId = Number(req.params.commentId)
+router.delete("/:placeId/comments/:commentId", async (req, res) => {
+  const placeId = Number(req.params.placeId);
+  const commentId = Number(req.params.commentId);
 
-    if (isNaN(placeId)) {
-        res.status(404).json({ message: `Invalid id "${placeId}"` })
-    } else if (isNaN(commentId)) {
-        res.status(404).json({ message: `Invalid id "${commentId}"` })
+  if (isNaN(placeId)) {
+    res.status(400).json({ message: "Invalid place ID" });
+    return;
+  }
+
+  if (isNaN(commentId)) {
+    res.status(400).json({ message: "Invalid comment ID" });
+    return;
+  }
+
+  try {
+    const comment = await Comment.findOne({
+      where: { commentId, placeId },
+    });
+
+    if (!comment) {
+      res.status(404).json({ message: "Comment not found" });
     } else {
-        const comment = await Comment.findOne({
-            where: { commentId: commentId, placeId: placeId }
-        })
-        if (!comment) {
-            res.status(404).json({ message: `Could not find comment with id "${commentId}" for place with id "${placeId}"` })
-        } else {
-            await comment.destroy()
-            res.json(comment)
-        }
+      await comment.destroy();
+      res.json(comment);
     }
-})
+  } catch (error) {
+    res.status(500).json({ message: "Failed to delete the comment" });
+  }
+});
 
-
-module.exports = router
+module.exports = router;
